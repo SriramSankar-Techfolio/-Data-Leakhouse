@@ -1,0 +1,5 @@
+{
+  "name": "Cloud Data Lakehouse Platform",
+  "description": "A full-stack data platform with fine-grained, policy-based access control, audit logging, and SQL query interface.",
+  "requestFramePermissions": []
+}

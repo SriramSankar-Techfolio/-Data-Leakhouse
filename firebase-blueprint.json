@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "Dataset": {
+      "title": "Dataset",
+      "description": "A logical grouping of tables in the lakehouse.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "owner": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "owner"]
+    },
+    "Table": {
+      "title": "Table",
+      "description": "A specific table within a dataset.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "datasetId": { "type": "string" },
+        "name": { "type": "string" },
+        "format": { "type": "string", "enum": ["iceberg", "delta"] },
+        "schema": { "type": "object" },
+        "location": { "type": "string" }
+      },
+      "required": ["id", "datasetId", "name", "format"]
+    },
+    "Policy": {
+      "title": "Policy",
+      "description": "Fine-grained access control policy.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["table", "column", "row"] },
+        "targetId": { "type": "string" },
+        "role": { "type": "string" },
+        "action": { "type": "string", "enum": ["read", "write", "admin", "mask", "filter"] },
+        "condition": { "type": "string", "description": "Expression for row-level filtering or column masking logic" },
+        "columns": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "targetType", "targetId", "role", "action"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Record of data access event.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "query": { "type": "string" },
+        "tables": { "type": "array", "items": { "type": "string" } },
+        "columns": { "type": "array", "items": { "type": "string" } },
+        "action": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "denied"] }
+      },
+      "required": ["id", "userId", "timestamp", "query", "status"]
+    },
+    "UserRole": {
+      "title": "UserRole",
+      "description": "Mapping of users to roles.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "roles": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["userId", "roles"]
+    }
+  },
+  "firestore": {
+    "/datasets/{datasetId}": {
+      "schema": "Dataset",
+      "description": "Collection of datasets"
+    },
+    "/datasets/{datasetId}/tables/{tableId}": {
+      "schema": "Table",
+      "description": "Tables within a dataset"
+    },
+    "/policies/{policyId}": {
+      "schema": "Policy",
+      "description": "Global access control policies"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Immutable audit logs"
+    },
+    "/user_roles/{userId}": {
+      "schema": "UserRole",
+      "description": "User role assignments"
+    }
+  }
+}

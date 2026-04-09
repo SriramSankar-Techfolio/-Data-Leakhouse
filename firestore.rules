@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: datasets
+    // Document ID: {datasetId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - description: string (optional, < 500 chars)
+    //   - owner: string (required, UID)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: tables
+    // Document ID: {tableId} (nested under datasets)
+    // Fields:
+    //   - id: string (required)
+    //   - datasetId: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - format: string (required, 'iceberg' | 'delta')
+    //   - schema: map (required)
+    //   - location: string (required, URL)
+    //
+    // Collection: policies
+    // Document ID: {policyId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - targetType: string (required, 'table' | 'column' | 'row')
+    //   - targetId: string (required)
+    //   - role: string (required)
+    //   - action: string (required, 'read' | 'write' | 'admin' | 'mask' | 'filter')
+    //   - condition: string (optional)
+    //   - columns: list (optional)
+    //
+    // Collection: audit_logs
+    // Document ID: {logId}
+    // Fields:
+    //   - id: string (required)
+    //   - userId: string (required)
+    //   - userEmail: string (required)
+    //   - timestamp: timestamp (required)
+    //   - query: string (required, < 5000 chars)
+    //   - status: string (required, 'success' | 'denied')
+    //
+    // Collection: user_roles
+    // Document ID: {userId}
+    // Fields:
+    //   - userId: string (required)
+    //   - roles: list (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/user_roles/$(request.auth.uid)).data.roles.hasAny(['admin']) ||
+         (request.auth.token.email == "sriram.s.ece.2023@snsce.ac.in" && request.auth.token.email_verified == true));
+    }
+
+    function isValidString(val, min, max) {
+      return val is string && val.size() >= min && val.size() <= max;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidDataset(data) {
+      return hasOnlyAllowedFields(['id', 'name', 'description', 'owner', 'createdAt']) &&
+             isValidString(data.name, 1, 100) &&
+             (!('description' in data) || isValidString(data.description, 0, 500)) &&
+             data.owner is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidTable(data) {
+      return hasOnlyAllowedFields(['id', 'datasetId', 'name', 'format', 'schema', 'location']) &&
+             isValidString(data.name, 1, 100) &&
+             data.format in ['iceberg', 'delta'] &&
+             data.schema is map &&
+             data.location is string;
+    }
+
+    function isValidPolicy(data) {
+      return hasOnlyAllowedFields(['id', 'name', 'targetType', 'targetId', 'role', 'action', 'condition', 'columns']) &&
+             data.targetType in ['table', 'column', 'row'] &&
+             data.action in ['read', 'write', 'admin', 'mask', 'filter'] &&
+             (!('columns' in data) || data.columns is list);
+    }
+
+    function isValidAuditLog(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'userEmail', 'timestamp', 'query', 'tables', 'columns', 'action', 'status']) &&
+             data.userId == request.auth.uid &&
+             data.timestamp == request.time &&
+             isValidString(data.query, 1, 5000);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /datasets/{datasetId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidDataset(request.resource.data);
+      allow update: if isAdmin() && isValidDataset(request.resource.data);
+      allow delete: if isAdmin();
+
+      match /tables/{tableId} {
+        allow read: if isAuthenticated();
+        allow create: if isAdmin() && isValidTable(request.resource.data);
+        allow update: if isAdmin() && isValidTable(request.resource.data);
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /policies/{policyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidPolicy(request.resource.data);
+      allow update: if isAdmin() && isValidPolicy(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data);
+      allow update, delete: if false; // Immutable
+    }
+
+    match /user_roles/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
